@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Car Identifier</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <style>
+            body {
+                color: white;
+                font-family: 'Sans-serif';
+                text-align: center;
+                margin-bottom: 100px;
+            }
+
+            button {
+                background-color: #a0522d;
+                color: white;
+                padding: 10px 20px;
+                border: none;
+                cursor: pointer;
+                margin: 10px;
+                border-radius: 5px;
+                font-size: calc(1em + 2px);
+                font-weight: bold;
+            }
+            #webcam-container, #image-container {
+                margin-top: 20px;
+            }
+            #image-container img {
+                border: 2px solid lightgrey;
+                border-radius: 10px;
+            }
+
+            #label-container{
+                width: 100%;
+                display: grid;
+                grid-template-columns: repeat(1, auto); /* Flexible columns */
+                gap: 2px; /* Removed gap between columns */
+                justify-content: center; /* Center-align the grid */
+                align-items: center;
+                margin: auto;
+            }
+            #label-container div{
+                margin: 1px;
+                display: inline-block;
+                justify-content: center;
+                align-items: center;
+                background-color: rgba(255, 191, 73, 0.425);
+                color: rgb(0, 0, 0);
+                width: 300px;
+                height: 40px;
+                font-size: 25px;
+                border-radius: 5px;
+            }
+
+            @media screen and (max-width:800px){
+                #label-container{
+                    grid-template-columns: repeat(2, auto);
+                }
+                #label-container div{
+                    width: 250px;
+                    height: 35px;
+                    font-size: 20px;
+                }
+            }
+    </style>
+</head>
+<body>
+    <button id="webcam-start" type="button" onclick="startWebcam()">Use Webcam</button>
+    <button id="file-upload" type="button" onclick="uploadImage()">Upload Image</button>
+    <br>
+    <div id="webcam-container"></div>
+    <input type="file" id="image-upload" style="display:none;" accept="image/*" onchange="handleImageUpload(event)">
+    <div id="image-container"></div>
+    <br><br>
+    <div id="label-container"></div>
+
+    <script type="text/javascript">
+        const URL = "./";
+        let model, webcam, maxPredictions;
+
+        // Load the model
+        async function loadModel() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+            model = await tmImage.load(modelURL, metadataURL);
+            maxPredictions = model.getTotalClasses();
+        }
+
+        // Start Webcam
+        async function startWebcam() {
+            await loadModel();
+            const flip = true;
+            webcam = new tmImage.Webcam(500, 400, flip);
+            await webcam.setup();
+            await webcam.play();
+            document.getElementById("webcam-container").appendChild(webcam.canvas);
+            window.requestAnimationFrame(webcamLoop);
+        }
+
+        async function webcamLoop() {
+            webcam.update();
+            await predict(webcam.canvas);
+            window.requestAnimationFrame(webcamLoop);
+        }
+
+        // Upload Image
+        async function uploadImage() {
+            await loadModel();
+            document.getElementById('image-upload').click();
+        }
+        function delay(ms) {
+            return new Promise(resolve => setTimeout(resolve, ms));
+        }
+
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = async function (e) {
+                    const imgElement = document.createElement("img");
+                    imgElement.src = e.target.result;
+                    imgElement.height = 224;
+                    imgElement.width = 224;
+
+                    const imageContainer = document.getElementById("image-container");
+                    imageContainer.innerHTML = "";
+                    imageContainer.appendChild(imgElement);
+
+                    // Predict multipe time for the uploaded image
+                    while(true){
+                            await predict(imgElement);
+                            await delay(1000);
+                    };    
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        // Prediction
+        async function predict(input) {
+            const predictions = await model.predict(input);
+
+            // Sort predictions and pick the top 3
+            const sortedPredictions = predictions.sort((a, b) => b.probability - a.probability);
+            updateLabels(sortedPredictions);
+        }
+
+        // Update Labels for Detailed View
+        function updateLabels(predictions) {
+            const labelContainer = document.getElementById("label-container");
+            labelContainer.innerHTML = "";
+
+            predictions.forEach(prediction => {
+                const carClass = prediction.className;
+                const probability = (prediction.probability * 100).toFixed(2);
+
+                const card = document.createElement("div");
+                card.textContent = `${carClass} - ${probability}%`;
+                labelContainer.appendChild(card);
+            });
+        }
+
+    </script>
+</body>
+</html>
